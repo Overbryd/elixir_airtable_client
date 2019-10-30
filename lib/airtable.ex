@@ -158,7 +158,14 @@ defmodule Airtable do
   end
 
   def make_request(:list, api_key, table_key, table_name, options) do
-    query = URI.encode_query(query_for_fields(options[:fields]))
+    query_params = query_for_offset(options[:offset]) ++
+      query_for_fields(options[:fields]) ++
+      query_for_sort(options[:sort]) ++
+      query_for_filter_by_formula(options[:filter_by_formula]) ++
+      query_for_view(options[:view]) ++
+      query_for_max_records(options[:max_records])
+
+    query = URI.encode_query(query_params)
     url =
       make_url(table_key, table_name)
       |> URI.parse()
@@ -180,6 +187,10 @@ defmodule Airtable do
   defp method_for(:replace), do: :put
   defp method_for(:update),  do: :patch
 
+  defp query_for_offset(nil), do: []
+
+  defp query_for_offset(offset) when is_binary(offset), do: [{"offset", offset}]
+
   defp query_for_fields(field_list) when is_list(field_list) do
     field_list |> Enum.map(fn value -> {"fields[]", value} end)
   end
@@ -187,6 +198,31 @@ defmodule Airtable do
   defp query_for_fields(nil) do
     []
   end
+
+  defp query_for_sort(nil), do: []
+
+  defp query_for_sort(sorts) when is_list(sorts) do
+    sorts
+    |> Enum.map(fn {field, direction} ->
+      [
+        {"sort[][field]", to_string(field)},
+        {"sort[][direction]", to_string(direction)}
+      ]
+    end)
+    |> List.flatten()
+  end
+
+  defp query_for_filter_by_formula(nil), do: []
+
+  defp query_for_filter_by_formula(formula) when is_binary(formula), do: [{"filterByFormula", formula}]
+
+  defp query_for_max_records(nil), do: []
+
+  defp query_for_max_records(records) when is_integer(records), do: [{"maxRecords", to_string(records)}]
+
+  defp query_for_view(nil), do: []
+
+  defp query_for_view(view_name) when is_binary(view_name), do: [{"view", view_name}]
 
   defp make_headers(api_key) when is_binary(api_key) do
     [
