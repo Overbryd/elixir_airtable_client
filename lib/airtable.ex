@@ -14,6 +14,17 @@ defmodule Airtable do
   def delete(api_key, table_key, table_name, item_id), do: perform(:delete, api_key, table_key, table_name, item_id, [])
 
   @doc """
+  Delete a bulk (max 10) records form a table.
+  """
+  def bulk_delete(api_key, table_key, table_name, record_ids)
+  when is_list(record_ids) and length(record_ids) <= 10 do
+    request = make_request(:bulk_delete, api_key, table_key, table_name, record_ids, [])
+    with {:ok, response = %Mojito.Response{}} <- Mojito.request(request) do
+      handle_response(:bulk_delete, response)
+    end
+  end
+
+  @doc """
   Creates a new row by performing a POST request to Airtable. Parameters are
   sent via the _fields_ option. Upload fields just need to be given one or more
   downloadable URLs.
@@ -129,6 +140,16 @@ defmodule Airtable do
     end
   end
 
+  def handle_response(:bulk_delete, response) do
+    with {:status, %Mojito.Response{body: body, status_code: 200}} <- {:status, response},
+         {:json, {:ok, %{"records" => records}}}          <- {:json, Jason.decode(body)} do
+      {:ok, records}
+    else
+      {:status, %Mojito.Response{status_code: 404}} -> {:error, :not_found}
+      {reason, details} -> {:error, {reason, details}}
+    end
+  end
+
   def handle_response(type, response) when type in [:get, :list, :create, :update, :replace] do
     with {:status, %Mojito.Response{body: body, status_code: 200}} <- {:status, response},
          {:json, {:ok, map = %{}}}                                 <- {:json,   Jason.decode(body)},
@@ -154,6 +175,19 @@ defmodule Airtable do
       method:  method_for(type),
       url:     make_url(table_key, table_name, item_id),
       body:    make_body(options[:fields]),
+    }
+  end
+
+  def make_request(:bulk_delete, api_key, table_key, table_name, record_ids, _options)
+  when is_list(record_ids) and length(record_ids) <= 10 and length(record_ids) >= 1
+  do
+    query_string = record_ids
+                   |> Enum.map(fn record_id -> URI.encode_query(%{"records[]" => record_id}) end)
+                   |> Enum.join("&")
+    %Mojito.Request{
+      headers: [{"Authorization", "Bearer #{api_key}"}],
+      method:  :delete,
+      url:     make_url(table_key, table_name) <> "?#{query_string}"
     }
   end
 
