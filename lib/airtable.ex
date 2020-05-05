@@ -6,19 +6,19 @@ defmodule Airtable do
   @doc """
   Retrieves a certain row from a table.
   """
-  def get(api_key, table_key, table_name, item_id), do: perform(:get, api_key, table_key, table_name, item_id, [])
+  def get(api_key, table_key, table_name, item_id, options \\ []), do: perform(:get, api_key, table_key, table_name, item_id, options)
 
   @doc """
   Deletes a certain row from a table. Returns {:ok, "DELETED_ID"} on success.
   """
-  def delete(api_key, table_key, table_name, item_id), do: perform(:delete, api_key, table_key, table_name, item_id, [])
+  def delete(api_key, table_key, table_name, item_id, options \\ []), do: perform(:delete, api_key, table_key, table_name, item_id, options)
 
   @doc """
   Delete a bulk (max 10) records form a table.
   """
-  def bulk_delete(api_key, table_key, table_name, record_ids)
+  def bulk_delete(api_key, table_key, table_name, record_ids, options \\ [])
   when is_list(record_ids) and length(record_ids) <= 10 do
-    request = make_request(:bulk_delete, api_key, table_key, table_name, record_ids, [])
+    request = make_request(:bulk_delete, api_key, table_key, table_name, record_ids, options)
     with {:ok, response = %Mojito.Response{}} <- Mojito.request(request) do
       handle_response(:bulk_delete, response)
     end
@@ -175,10 +175,11 @@ defmodule Airtable do
       method:  method_for(type),
       url:     make_url(table_key, table_name, item_id),
       body:    make_body(options[:fields]),
+      opts:    Keyword.get(options, :request_options)
     }
   end
 
-  def make_request(:bulk_delete, api_key, table_key, table_name, record_ids, _options)
+  def make_request(:bulk_delete, api_key, table_key, table_name, record_ids, options)
   when is_list(record_ids) and length(record_ids) <= 10 and length(record_ids) >= 1
   do
     query_string = record_ids
@@ -187,7 +188,8 @@ defmodule Airtable do
     %Mojito.Request{
       headers: [{"Authorization", "Bearer #{api_key}"}],
       method:  :delete,
-      url:     make_url(table_key, table_name) <> "?#{query_string}"
+      url:     make_url(table_key, table_name) <> "?#{query_string}",
+      opts:    Keyword.get(options, :request_options)
     }
   end
 
@@ -208,7 +210,8 @@ defmodule Airtable do
     %Mojito.Request{
       headers: make_headers(api_key),
       method: :get,
-      url: url
+      url: url,
+      opts: Keyword.get(options, :request_options)
     }
   end
 
