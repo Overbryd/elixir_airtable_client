@@ -8,6 +8,7 @@ defmodule Airtable.Application do
   def start(_type, _args) do
     # List all child processes to be supervised
     children = [
+      {Finch, name: AirtableFinch}
       # Starts a worker by calling: Airtable.Worker.start_link(arg)
       # {Airtable.Worker, arg}
     ]

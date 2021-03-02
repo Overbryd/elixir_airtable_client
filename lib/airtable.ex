@@ -19,7 +19,7 @@ defmodule Airtable do
   def bulk_delete(api_key, table_key, table_name, record_ids, options \\ [])
   when is_list(record_ids) and length(record_ids) <= 10 do
     request = make_request(:bulk_delete, api_key, table_key, table_name, record_ids, options)
-    with {:ok, response = %Mojito.Response{}} <- Mojito.request(request) do
+    with {:ok, response = %Finch.Response{}} <- Finch.request(request, AirtableFinch) do
       handle_response(:bulk_delete, response)
     end
   end
@@ -73,7 +73,7 @@ defmodule Airtable do
   """
   def perform(action, api_key, table_key, table_name, item_id, options \\ []) do
     with {:make_request, request}             <- {:make_request, make_request(action, api_key, table_key, table_name, item_id, options)},
-         {:ok, response = %Mojito.Response{}} <- Mojito.request(request) do
+         {:ok, response = %Finch.Response{}} <- Finch.request(request, AirtableFinch) do
       handle_response(action, response)
     end
   end
@@ -125,39 +125,39 @@ defmodule Airtable do
   """
   def list(api_key, table_key, table_name, options \\ []) do
     request = make_request(:list, api_key, table_key, table_name, options)
-    with {:ok, response = %Mojito.Response{}} <- Mojito.request(request) do
+    with {:ok, response = %Finch.Response{}} <- Finch.request(request, AirtableFinch) do
       handle_response(:list, response)
     end
   end
 
   def handle_response(:delete, response) do
-    with {:status, %Mojito.Response{body: body, status_code: 200}} <- {:status, response},
+    with {:status, %Finch.Response{body: body, status: 200}} <- {:status, response},
          {:json, {:ok, %{"id" => id, "deleted" => true}}}          <- {:json,   Jason.decode(body)} do
       {:ok, id}
     else
-      {:status, %Mojito.Response{status_code: 404}} -> {:error, :not_found}
+      {:status, %Finch.Response{status: 404}} -> {:error, :not_found}
       {reason, details} -> {:error, {reason, details}}
     end
   end
 
   def handle_response(:bulk_delete, response) do
-    with {:status, %Mojito.Response{body: body, status_code: 200}} <- {:status, response},
+    with {:status, %Finch.Response{body: body, status: 200}} <- {:status, response},
          {:json, {:ok, %{"records" => records}}}          <- {:json, Jason.decode(body)} do
       {:ok, records}
     else
-      {:status, %Mojito.Response{status_code: 404}} -> {:error, :not_found}
+      {:status, %Finch.Response{status: 404}} -> {:error, :not_found}
       {reason, details} -> {:error, {reason, details}}
     end
   end
 
   def handle_response(type, response) when type in [:get, :list, :create, :update, :replace] do
-    with {:status, %Mojito.Response{body: body, status_code: 200}} <- {:status, response},
+    with {:status, %Finch.Response{body: body, status: 200}} <- {:status, response},
          {:json, {:ok, map = %{}}}                                 <- {:json,   Jason.decode(body)},
          {:struct, {:ok, item}}                                    <- {:struct, make_struct(type, map)} do
       {:ok, item}
     else
-      {:status, %Mojito.Response{status_code: 404}} -> {:error, :not_found}
-      {reason, details}                             -> {:error, {reason, details}}
+      {:status, %Finch.Response{status: 404}} -> {:error, :not_found}
+      {reason, details} -> {:error, {reason, details}}
     end
   end
 
@@ -170,13 +170,14 @@ defmodule Airtable do
   end
 
   def make_request(type, api_key, table_key, table_name, item_id, options) when type in [:get, :delete, :update, :replace, :create] do
-    %Mojito.Request{
-      headers: make_headers(api_key),
-      method:  method_for(type),
-      url:     make_url(table_key, table_name, item_id),
-      body:    make_body(options[:fields]),
-      opts:    Keyword.get(options, :request_options)
-    }
+    Finch.build(method_for(type), make_url(table_key, table_name, item_id), make_headers(api_key), make_body(options[:fields]))
+    # %Finch.Request{
+    #   headers: make_headers(api_key),
+    #   method:  method_for(type),
+    #   url:     make_url(table_key, table_name, item_id),
+    #   body:    make_body(options[:fields]),
+    #   opts:    Keyword.get(options, :request_options)
+    # }
   end
 
   def make_request(:bulk_delete, api_key, table_key, table_name, record_ids, options)
@@ -185,12 +186,13 @@ defmodule Airtable do
     query_string = record_ids
                    |> Enum.map(fn record_id -> URI.encode_query(%{"records[]" => record_id}) end)
                    |> Enum.join("&")
-    %Mojito.Request{
-      headers: [{"Authorization", "Bearer #{api_key}"}],
-      method:  :delete,
-      url:     make_url(table_key, table_name) <> "?#{query_string}",
-      opts:    Keyword.get(options, :request_options)
-    }
+    Finch.build(:delete, make_url(table_key, table_name) <> "?#{query_string}", [{"Authorization", "Bearer #{api_key}"}])
+    # %Finch.Request{
+    #   headers: ,
+    #   method:  :delete,
+    #   url:     make_url(table_key, table_name) <> "?#{query_string}",
+    #   opts:    Keyword.get(options, :request_options)
+    # }
   end
 
   def make_request(:list, api_key, table_key, table_name, options) do
@@ -206,17 +208,17 @@ defmodule Airtable do
       make_url(table_key, table_name)
       |> URI.parse()
       |> Map.put(:query, query)
-      |> URI.to_string()
-    %Mojito.Request{
-      headers: make_headers(api_key),
-      method: :get,
-      url: url,
-      opts: Keyword.get(options, :request_options)
-    }
+    Finch.build(:get, url, make_headers(api_key))
+    # %Finch.Request{
+    #   headers: make_headers(api_key),
+    #   method: :get,
+    #   url: url,
+    #   opts: Keyword.get(options, :request_options)
+    # }
   end
 
   defp make_body(nil),       do: ""
-  defp make_body(map = %{}), do: Jason.encode!(%{"fields" => map})
+  defp make_body(map = %{}), do: Jason.encode_to_iodata!(%{"fields" => map})
 
   defp method_for(:get),     do: :get
   defp method_for(:create),  do: :post
@@ -272,6 +274,7 @@ defmodule Airtable do
     [base_url(), table_key, table_name, item_id]
     |> Enum.filter(fn nil -> false; _ -> true end)
     |> Enum.join("/")
+    |> URI.parse()
   end
 
   defp base_url(), do: "https://api.airtable.com/v0"

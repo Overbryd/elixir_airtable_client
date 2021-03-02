@@ -17,11 +17,10 @@ defmodule AirtableTest.Fixtures do
 
   def response(type) do
     {:ok,
-     %Mojito.Response{
+     %Finch.Response{
        body: response_body(type),
-       complete: true,
        headers: [{"content-type", "application/json; charset=utf-8"},],
-       status_code: code_for(type)
+       status: code_for(type)
      }
     }
   end
